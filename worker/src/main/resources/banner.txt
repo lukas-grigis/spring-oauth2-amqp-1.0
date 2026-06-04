@@ -1,0 +1,9 @@
+__        __         _
+\ \      / /__  _ __| | _____ _ __
+ \ \ /\ / / _ \| '__| |/ / _ \ '__|
+  \ V  V / (_) | |  |   <  __/ |
+   \_/\_/ \___/|_|  |_|\_\___|_|
+
+Java Version:           @java.version@
+Spring Boot Version:    ${spring-boot.version}
+
