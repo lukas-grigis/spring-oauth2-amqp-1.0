@@ -1,0 +1,26 @@
+{
+    "name": "keycloak-setup",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "setup": "tsx setup-keycloak.ts",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "dependencies": {
+        "@keycloak/keycloak-admin-client": "^26.5.6",
+        "tsx": "^4.21.0",
+        "typescript": "~5.9.3",
+        "typescript-result": "^3.5.2",
+        "zod": "^4.3.6"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "eslint": "^10.1.0",
+        "prettier": "^3.8.1",
+        "typescript-eslint": "^8.57.2"
+    }
+}
