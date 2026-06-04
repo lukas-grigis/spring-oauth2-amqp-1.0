@@ -1,0 +1,207 @@
+[tools]
+java = "25"
+maven = "3"
+node = "24"
+npm = "10"
+
+# ─── Build ───────────────────────────────────────────────────────────
+
+[tasks.build]
+description = "Build all modules"
+run = "mvn clean install -DskipTests"
+
+[tasks.test]
+description = "Run the module tests (offline context tests)"
+run = "mvn clean verify"
+
+# ─── Infra ───────────────────────────────────────────────────────────
+
+[tasks."infra:up"]
+description = "Start Traefik + Postgres + Keycloak + RabbitMQ"
+dir = "support"
+run = "docker compose up -d"
+
+[tasks."infra:down"]
+description = "Stop infrastructure"
+dir = "support"
+run = "docker compose down"
+
+[tasks."keycloak:setup"]
+description = "Provision the realm, clients, scopes (Admin API over HTTP)"
+depends = ["infra:up"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "==> Waiting for Keycloak..."
+until curl -sf http://localhost/auth/realms/master > /dev/null 2>&1; do sleep 2; done
+# Keycloak's master realm rejects plain-HTTP admin calls; flip ssl_required to NONE in the DB (dev only),
+# then restart so it takes effect. This lets the Admin-API setup script run over HTTP behind Traefik.
+# Resolve container ids by compose label so this survives a custom -p/COMPOSE_PROJECT_NAME.
+DB_ID="$(cd support && docker compose ps -q database)"
+KC_ID="$(cd support && docker compose ps -q keycloak)"
+echo "==> Relaxing master-realm SSL (dev only)..."
+docker exec "$DB_ID" psql -U admin -d keycloak -c "UPDATE realm SET ssl_required = 'NONE' WHERE name = 'master';" > /dev/null
+docker restart "$KC_ID" > /dev/null
+until curl -sf http://localhost/auth/realms/master > /dev/null 2>&1; do sleep 2; done
+echo "==> Provisioning realm + clients + scopes..."
+(cd support/keycloak && npm install --silent && npm run setup)
+"""
+
+# ─── Individual services ─────────────────────────────────────────────
+
+[tasks."dispatcher:start"]
+description = "Start Dispatcher (port 8080)"
+dir = "dispatcher"
+run = "mvn spring-boot:run"
+
+[tasks."worker:start"]
+description = "Start Worker"
+dir = "worker"
+run = "mvn spring-boot:run"
+
+[tasks."reporter:start"]
+description = "Start Reporter"
+dir = "reporter"
+run = "mvn spring-boot:run"
+
+# ─── Integration tests ───────────────────────────────────────────────
+
+[tasks."test:integration"]
+description = "Run integration tests against the live stack (requires mise run demo)"
+dir = "test"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+npm install --silent
+npm test
+"""
+
+# ─── Status ──────────────────────────────────────────────────────────
+
+[tasks.status]
+description = "Probe the running stack: what is working and why, and what is not and why"
+quiet = true
+run = '''
+#!/usr/bin/env bash
+# Read-only probes. NOT set -e: a failing probe is a result we report, not a crash.
+set -uo pipefail
+
+KC_REALM="http://localhost/auth/realms/amqp-demo"
+KC_TOKEN="$KC_REALM/protocol/openid-connect/token"
+MGMT="http://localhost:15672/api"
+RABBIT="$(cd support 2>/dev/null && docker compose ps -q rabbitmq 2>/dev/null)"
+
+ok() { echo "  [ OK ] $1"; }
+no() { echo "  [FAIL] $1"; }
+hd() { echo; echo "$1"; }
+
+code()        { curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$@" 2>/dev/null || echo 000; }
+token()       { curl -s -o /dev/null -w '%{http_code}' --max-time 8 --http1.1 -u "$1:$1-secret" -d 'grant_type=client_credentials' "$KC_TOKEN" 2>/dev/null || echo 000; }
+# Broker introspection via rabbitmqctl (cookie auth) — the HTTP mgmt API needs a management user/token.
+ping_broker() { [ -n "$RABBIT" ] && docker exec "$RABBIT" rabbitmq-diagnostics -q ping >/dev/null 2>&1; }
+cons()        { [ -n "$RABBIT" ] && docker exec "$RABBIT" rabbitmqctl list_queues name consumers --quiet 2>/dev/null | awk -v q="$1" '$1==q{print $2}'; }
+
+echo "======================================================================"
+echo "  OAuth2-AMQP demo — status"
+echo "======================================================================"
+
+hd "INFRASTRUCTURE"
+if [ "$(code "$KC_REALM")" = 200 ]; then ok "Keycloak    $KC_REALM  reachable -> issues OAuth tokens"
+else no "Keycloak    not reachable -> services cannot get tokens.   fix: mise run keycloak:setup"; fi
+if ping_broker; then ok "RabbitMQ    broker :5672 up  (OAuth2 + internal auth backends, resource_server_id=rabbitmq)"
+else no "RabbitMQ    broker not reachable / container down.   fix: mise run infra:up"; fi
+if [ "$(code -u admin:admin "$MGMT/overview")" = 200 ]; then ok "RabbitMQ    mgmt UI http://localhost:15672  (admin/admin)"
+else no "RabbitMQ    mgmt UI http://localhost:15672  admin/admin rejected -> no management user (check definitions.json)"; fi
+
+hd "OAUTH TOKEN ISSUANCE  (client_credentials; the JWT is the AMQP 1.0 SASL credential, aud=rabbitmq)"
+for pair in "dispatcher:jobs_write" "worker:jobs_read results_write" "reporter:results_read"; do
+  id="${pair%%:*}"; scopes="${pair#*:}"; c="$(token "$id")"
+  if [ "$c" = 200 ]; then ok "$id  -> token issued   (scopes: $scopes)"
+  else no "$id  -> token request failed (HTTP $c)"; fi
+done
+
+hd "SERVICES"
+H="$(curl -s --max-time 10 http://localhost:8080/actuator/health 2>/dev/null)"
+if   echo "$H" | grep -q '"status":"UP"'; then ok "dispatcher  http://localhost:8080  health=UP -> accepts POST /jobs, publishes to 'jobs'"
+elif [ -z "$H" ];                         then no "dispatcher  :8080 not responding -> still starting or crashed (see .logs/dispatcher.log)"
+else                                           no "dispatcher  health=DOWN -> broker/token problem: $H  (see .logs/dispatcher.log)"; fi
+jc="$(cons jobs.in)";     jc="${jc:-0}"
+rc="$(cons results.out)"; rc="${rc:-0}"
+if [ "$jc" -ge 1 ] 2>/dev/null; then ok "worker      (no HTTP)  consuming 'jobs.in' ($jc consumer) -> publishes to 'results'"
+else no "worker      not consuming 'jobs.in' -> not connected to the broker (see .logs/worker.log)"; fi
+if [ "$rc" -ge 1 ] 2>/dev/null; then ok "reporter    (no HTTP)  consuming 'results.out' ($rc consumer)"
+else no "reporter    not consuming 'results.out' -> not connected to the broker (see .logs/reporter.log)"; fi
+
+hd "BROKER AUTHORIZATION  (RabbitMQ enforces each token's scopes via scope_aliases)"
+echo "  ALLOWED  — and why:"
+echo "    dispatcher  publish job.*    -> 'jobs'        jobs_write     => write:*/jobs/job.*"
+echo "    worker      publish result.* -> 'results'     results_write  => write:*/results/result.*"
+echo "    worker      consume 'jobs.in'                  jobs_read      => read:*/jobs.in"
+echo "    reporter    consume 'results.out'              results_read   => read:*/results.out"
+echo "  REFUSED  — and why (the point of the demo):"
+echo "    reporter    publish -> 'results'               has results_read only, no write scope"
+echo "    dispatcher  publish -> 'results'               jobs_write grants 'jobs' only, not 'results'"
+echo "    worker      publish 'internal.audit'           results_write is scoped to routing key result.* only"
+echo "    -> prove it live:  mise run test:integration   (incl. the 3 refusals above + token-expiry disconnect)"
+
+hd "TRY IT"
+echo "    curl -X POST http://localhost:8080/jobs -H 'Content-Type: application/json' -d '{\"payload\":\"hello\"}'"
+echo "    tail -f .logs/{dispatcher,worker,reporter}.log"
+echo "======================================================================"
+'''
+
+# ─── Demo ────────────────────────────────────────────────────────────
+
+[tasks.demo]
+description = "One-click demo: build, start infra, provision Keycloak, start services. Ctrl+C to stop."
+depends = ["build", "keycloak:setup"]
+quiet = true
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(pwd)"
+PIDS=()
+
+cleanup() {
+  echo ""
+  echo "==> Shutting down..."
+  for pid in ${PIDS[@]+"${PIDS[@]}"}; do
+    kill "$pid" 2>/dev/null || true
+  done
+  wait 2>/dev/null || true
+  (cd "$ROOT/support" && docker compose down) 2>/dev/null || true
+  echo "==> Stopped."
+  exit 0
+}
+trap cleanup INT TERM
+
+# Build, infra, and Keycloak provisioning already ran via `depends`. Just start the services.
+echo "==> Starting backend services..."
+mkdir -p "$ROOT/.logs"
+(cd "$ROOT/dispatcher" && mvn spring-boot:run) > "$ROOT/.logs/dispatcher.log" 2>&1 &
+PIDS+=($!)
+(cd "$ROOT/worker" && mvn spring-boot:run) > "$ROOT/.logs/worker.log" 2>&1 &
+PIDS+=($!)
+(cd "$ROOT/reporter" && mvn spring-boot:run) > "$ROOT/.logs/reporter.log" 2>&1 &
+PIDS+=($!)
+
+# Gate 1: dispatcher web context (broker-independent readiness probe — never opens an AMQP connection).
+echo "         Waiting for dispatcher..."
+until curl -sf http://localhost:8080/actuator/health/readiness > /dev/null 2>&1; do sleep 2; done
+
+# Gate 2: worker + reporter have no HTTP endpoint, so confirm they connected by their broker consumers
+# (read via rabbitmqctl — cookie auth — not the HTTP mgmt API, which needs a management user/token).
+RABBIT="$(cd "$ROOT/support" && docker compose ps -q rabbitmq 2>/dev/null)"
+cons() { [ -n "$RABBIT" ] && docker exec "$RABBIT" rabbitmqctl list_queues name consumers --quiet 2>/dev/null | awk -v q="$1" '$1==q{print $2}'; }
+both_up() { local a b; a="$(cons jobs.in)"; b="$(cons results.out)"; [ "${a:-0}" -ge 1 ] && [ "${b:-0}" -ge 1 ]; }
+echo "         Waiting for worker + reporter to connect to the broker..."
+n=0; until both_up; do sleep 2; n=$((n+1)); [ "$n" -gt 30 ] && { echo "         (timed out; status below will show who is missing)"; break; }; done
+
+# Show what is working (and why) and what is not (and why).
+mise run status
+
+echo ""
+echo "    Press Ctrl+C to stop everything (services + infra)."
+echo ""
+wait
+"""

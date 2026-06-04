@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!-- Source: https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-parent -->
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.0.6</version>
+  </parent>
+
+  <groupId>dev.lukasgrigis.blog.amqp</groupId>
+  <artifactId>spring-oauth2-amqp-1.0</artifactId>
+  <version>0.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Spring OAuth2 AMQP 1.0</name>
+  <description>OAuth2-secured messaging over AMQP 1.0 with Spring AMQP, RabbitMQ, and Keycloak</description>
+  <url>https://github.com/lukas-grigis/spring-oauth2-amqp-1.0</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <modules>
+    <module>dispatcher</module>
+    <module>worker</module>
+    <module>reporter</module>
+  </modules>
+
+  <properties>
+    <!-- General Project Settings -->
+    <java.version>25</java.version>
+    <maven.compiler.source>${java.version}</maven.compiler.source>
+    <maven.compiler.target>${java.version}</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <!-- Spring AMQP's RabbitMQ AMQP 1.0 client module. Not managed by the Spring Boot 4.0.6 BOM (which only
+         manages the legacy 0.9.1 client, com.rabbitmq:amqp-client), so we pin it here. Aligned with the
+         BOM's spring-amqp 4.0.3; it transitively pulls the AMQP 1.0 client (com.rabbitmq.client:amqp-client). -->
+    <spring-rabbitmq-client.version>4.0.3</spring-rabbitmq-client.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.amqp</groupId>
+        <artifactId>spring-rabbitmq-client</artifactId>
+        <version>${spring-rabbitmq-client.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <!-- Inherited by all modules. -->
+  <dependencies>
+    <!-- The RabbitMQ AMQP 1.0 client declares Gson as an *optional* dependency, so it is not pulled in
+         transitively. Its OAuth2 token requester needs Gson to parse the token endpoint's JSON response;
+         without it the first connection fails with NoClassDefFoundError: com.google.gson.reflect.TypeToken.
+         Version managed by the Spring Boot BOM. -->
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
+
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>${maven-resources-plugin.version}</version>
+          <configuration>
+            <delimiters>
+              <delimiter>@</delimiter>
+            </delimiters>
+            <useDefaultDelimiters>false</useDefaultDelimiters>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
+</project>

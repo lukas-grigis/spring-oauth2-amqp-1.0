@@ -1,0 +1,18 @@
+target/
+*.class
+*.jar
+*.war
+*.ear
+.idea/
+*.iml
+.DS_Store
+*.log
+.logs/
+.env.local
+.env.*.local
+node_modules/
+dist/
+.mise.local.toml
+
+# AI assistant runtime artifacts
+.claude/
