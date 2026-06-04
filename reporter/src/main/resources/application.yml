@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: reporter
+  main:
+    web-application-type: none
+
+app:
+  amqp:
+    connection:
+      host: localhost
+      port: 5672
+      virtual-host: /
+    oauth2:
+      # Keycloak is HTTP behind Traefik at /auth. The AMQP 1.0 client fetches + refreshes the token itself.
+      token-uri: http://localhost/auth/realms/amqp-demo/protocol/openid-connect/token
+      client-id: reporter
+      # demo default; override with REPORTER_CLIENT_SECRET (or a secrets manager) in production
+      client-secret: "${REPORTER_CLIENT_SECRET:reporter-secret}"
+      # Keycloak alias scope; the broker expands it to read results.out only — no write anywhere
+      scope: results_read
+    queues:
+      results-out: "results.out"
+
+logging:
+  level:
+    org.springframework.amqp: INFO
