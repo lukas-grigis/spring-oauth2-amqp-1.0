@@ -17,7 +17,7 @@
 
 ---
 
-> This is the **AMQP 1.0** port of [`spring-oauth2-amqp`](https://github.com/lukas-grigis/spring-oauth2-amqp)
+> This is the **AMQP 1.0** port of [`spring-oauth2-amqp-0.9.1`](https://github.com/lukas-grigis/spring-oauth2-amqp-0.9.1)
 > (which uses AMQP 0.9.1). Same security model, same topology, same payoff — adapted to AMQP 1.0's native client,
 > addressing, and token lifecycle. See [What changed from the AMQP 0.9.1 version](#what-changed-from-the-amqp-091-version).
 
@@ -309,7 +309,7 @@ configuration lives next to them. (`support/.env` holds the shared host ports an
 
 ## What changed from the AMQP 0.9.1 version
 
-If you've read the [0.9.1 version](https://github.com/lukas-grigis/spring-oauth2-amqp), here's the full diff in one
+If you've read the [0.9.1 version](https://github.com/lukas-grigis/spring-oauth2-amqp-0.9.1), here's the full diff in one
 table. The broker, the realm, and the topology are untouched; everything that changed is on the client side.
 
 | Area                  | AMQP 0.9.1                                                              | AMQP 1.0 (this repo)                                                                 |
