@@ -1,0 +1,79 @@
+{
+  "rabbit_version": "4.2.0",
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "users": [
+    {
+      "name": "admin",
+      "password_hash": "q7NHbsJQ4KDaLeDO4ZVP51lG5GL1tkQqIGrwzpts0niVZZPN",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "permissions": [
+    {
+      "user": "admin",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "jobs",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "results",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "jobs.in",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "results.out",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "jobs",
+      "vhost": "/",
+      "destination": "jobs.in",
+      "destination_type": "queue",
+      "routing_key": "job.#",
+      "arguments": {}
+    },
+    {
+      "source": "results",
+      "vhost": "/",
+      "destination": "results.out",
+      "destination_type": "queue",
+      "routing_key": "result.#",
+      "arguments": {}
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+name: spring-oauth2-amqp
+
+services:
+  # Reverse proxy. Terminates TLS for the broker -> Keycloak JWKS hop (RabbitMQ's OAuth2 plugin requires an
+  # https jwks_uri) using Traefik's built-in self-signed cert — nothing is committed and Keycloak stays HTTP.
+  traefik:
+    image: "${TRAEFIK_IMAGE}"
+    restart: "unless-stopped"
+
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--log.level=INFO"
+
+    ports:
+      - "${WEB_PORT}:80"
+
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  # Persistent store for Keycloak so the master-realm sslRequired override survives a restart.
+  database:
+    image: "${POSTGRES_IMAGE}"
+    restart: "unless-stopped"
+
+    env_file:
+      - "database/.env"
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+    volumes:
+      # postgres:18 stores data in a version-specific subdir, so mount the parent (not /data).
+      - "database-data:/var/lib/postgresql"
+      - "./database/init-scripts:/docker-entrypoint-initdb.d:ro"
+
+  # HTTP only, no cert. Reached at http://localhost/auth (services) and https://traefik/auth (broker JWKS).
+  # No compose healthcheck on purpose: dependents tolerate a not-yet-ready Keycloak (the broker fetches JWKS
+  # lazily), and the mise tasks gate readiness by polling /auth/realms/master before provisioning.
+  keycloak:
+    image: "${KEYCLOAK_IMAGE}"
+    restart: "unless-stopped"
+
+    depends_on:
+      database:
+        condition: service_healthy
+      traefik:
+        condition: service_started
+
+    env_file:
+      - "keycloak/.env"
+
+    command:
+      - "start-dev"
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keycloak.rule=PathPrefix(`/auth`)"
+      - "traefik.http.routers.keycloak.entrypoints=web"
+      - "traefik.http.routers.keycloak.service=keycloak"
+      - "traefik.http.routers.keycloak-tls.rule=PathPrefix(`/auth`)"
+      - "traefik.http.routers.keycloak-tls.entrypoints=websecure"
+      - "traefik.http.routers.keycloak-tls.tls=true"
+      - "traefik.http.routers.keycloak-tls.service=keycloak"
+      - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
+
+  rabbitmq:
+    image: "${RABBITMQ_IMAGE}"
+    restart: "unless-stopped"
+
+    # JWKS is fetched lazily on first token validation, so the broker only needs Keycloak/Traefik started.
+    depends_on:
+      keycloak:
+        condition: service_started
+      traefik:
+        condition: service_started
+
+    volumes:
+      - "./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro"
+      - "./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro"
+      - "./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro"
+
+    ports:
+      - "${RABBITMQ_AMQP_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
+
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  database-data: { }
