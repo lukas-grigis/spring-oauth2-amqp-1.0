@@ -15,6 +15,10 @@
   No <code>guest/guest</code>. No application-level ACLs. Just tokens, scopes, and a broker that refuses to lie.
 </p>
 
+<p align="center">
+  <a href="https://lukasgrigis.dev/blog/rabbitmq-oauth2-amqp-1-0/"><strong>Read the companion blog post &rarr;</strong></a>
+</p>
+
 ---
 
 > This is the **AMQP 1.0** port of [`spring-oauth2-amqp-0.9.1`](https://github.com/lukas-grigis/spring-oauth2-amqp-0.9.1)
