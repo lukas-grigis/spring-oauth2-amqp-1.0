@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>4.0.6</version>
+    <version>4.1.0</version>
   </parent>
 
   <groupId>dev.lukasgrigis.blog.amqp</groupId>
@@ -32,10 +32,10 @@
     <maven.compiler.target>${java.version}</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-    <!-- Spring AMQP's RabbitMQ AMQP 1.0 client module. Not managed by the Spring Boot 4.0.6 BOM (which only
+    <!-- Spring AMQP's RabbitMQ AMQP 1.0 client module. Not managed by the Spring Boot 4.1.0 BOM (which only
          manages the legacy 0.9.1 client, com.rabbitmq:amqp-client), so we pin it here. Aligned with the
-         BOM's spring-amqp 4.0.3; it transitively pulls the AMQP 1.0 client (com.rabbitmq.client:amqp-client). -->
-    <spring-rabbitmq-client.version>4.0.3</spring-rabbitmq-client.version>
+         BOM's spring-amqp 4.1.0; it transitively pulls the AMQP 1.0 client (com.rabbitmq.client:amqp-client). -->
+    <spring-rabbitmq-client.version>4.1.0</spring-rabbitmq-client.version>
   </properties>
 
   <dependencyManagement>
