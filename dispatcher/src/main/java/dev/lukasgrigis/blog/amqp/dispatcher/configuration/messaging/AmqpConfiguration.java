@@ -80,8 +80,9 @@ record AmqpProperties(
  *
  * <p>{@link SingleAmqpConnectionFactory} adapts that {@link Environment} to Spring AMQP's
  * {@link AmqpConnectionFactory}, and {@link RabbitAmqpTemplate} publishes through it using the familiar
- * exchange/routing-key API (Spring encodes the AMQP 1.0 v2 target address {@code /exchanges/jobs/job.*}
- * internally) with JSON conversion via the {@link MessageConverter} below.
+ * exchange/routing-key API (Spring publishes on one anonymous link and addresses each message through its
+ * {@code to} field to the AMQP 1.0 v2 address {@code /exchanges/{exchange}/{routingKey}}) with JSON conversion via
+ * the {@link MessageConverter} below.
  */
 @Configuration
 @EnableConfigurationProperties(AmqpProperties.class)

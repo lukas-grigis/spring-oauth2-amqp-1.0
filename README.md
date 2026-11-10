@@ -148,9 +148,10 @@ more words, `*` = exactly one). Because each exchange owns its own key namespace
 visibly distinct, and the OAuth2 write scopes carry the routing key (`rabbitmq.write:*/jobs/job.*`) — so the broker
 enforces not just *which exchange* a service may publish to, but *which routing keys*.
 
-Over AMQP 1.0 there are no channels and no `basic.publish`; a producer attaches a link to a **target address** and a
-consumer attaches to a **source address**. RabbitMQ's [v2 address format](https://www.rabbitmq.com/docs/amqp#addresses)
-maps cleanly onto the same exchange/routing-key/queue model:
+Over AMQP 1.0 there are no channels and no `basic.publish`; a producer sends to a **target address** (the link's target,
+or each message's `to` field on an anonymous link) and a consumer attaches to a **source address**. RabbitMQ's
+[v2 address format](https://www.rabbitmq.com/docs/amqp#addresses) maps cleanly onto the same exchange/routing-key/queue
+model:
 
 ```
 publish job.submitted to jobs  →  target  /exchanges/jobs/job.submitted
@@ -158,7 +159,9 @@ consume from jobs.in           →  source  /queues/jobs.in
 ```
 
 Spring's `RabbitAmqpTemplate` and `@RabbitListener` take the familiar `exchange` / `routingKey` / `queue` arguments and
-build those v2 addresses for you — so the application code reads exactly like the 0.9.1 version.
+build those v2 addresses for you (`RabbitAmqpTemplate` publishes on one anonymous link and puts
+`/exchanges/{exchange}/{routingKey}` into each message's `to` field) — so the application code reads exactly like the
+0.9.1 version.
 
 When to reach for what:
 
@@ -169,9 +172,10 @@ When to reach for what:
 | **A new exchange**    | you cross a *domain* boundary (jobs vs. results)                                 |
 
 The integration test exercises this directly: the worker may publish `result.ready` but is refused when it tries
-`internal.audit`, because that key falls outside its `result.*` scope. (Note the AMQP 1.0 nuance: the exchange-level
-write check happens when the link *attaches*, while the routing-key check happens on the first message *transfer* — so
-the worker's link to `results` attaches fine and is refused only when it sends `internal.audit`.)
+`internal.audit`, because that key falls outside its `result.*` scope. (Note the AMQP 1.0 nuance: on the test's
+fixed-target link, the exchange-level write check happens when the link *attaches*, while the routing-key check happens
+on the first message *transfer* — so the worker's link to `results` attaches fine and is refused only when it sends
+`internal.audit`.)
 
 ## How the RabbitMQ OAuth2 plugin is configured
 
@@ -223,9 +227,9 @@ Environment environment = new AmqpEnvironmentBuilder()
 ```
 
 *(Simplified — the real `AmqpConfiguration` binds all of this from validated `app.amqp` properties.)* The client fetches
-the token over plain HTTP, and its token requester pins the JDK HTTP client to HTTP/1.1 — so it sidesteps the
-cleartext-h2c-through-Traefik deadlock that the 0.9.1 version had to work around with Apache HttpClient 5. The token
-becomes the AMQP SASL password; the broker validates it on connect and on every operation.
+the token over plain HTTP, and its token requester uses the JDK's `HttpURLConnection`, which only speaks HTTP/1.1 — so
+it sidesteps the cleartext-h2c-through-Traefik deadlock that the 0.9.1 version had to work around with Apache
+HttpClient 5. The token becomes the AMQP SASL password; the broker validates it on connect and on every operation.
 
 ## Token expiry and in-place refresh
 
@@ -318,16 +322,16 @@ table. The broker, the realm, and the topology are untouched; everything that ch
 
 | Area                  | AMQP 0.9.1                                                              | AMQP 1.0 (this repo)                                                                 |
 |-----------------------|------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
-| Client library        | `spring-boot-starter-amqp` (RabbitMQ Java client 5.x)                  | `spring-rabbitmq-client` 4.0.3 (RabbitMQ AMQP 1.0 client) — wired by hand, no auto-config |
+| Client library        | `spring-boot-starter-amqp` (RabbitMQ Java client 5.x)                  | `spring-rabbitmq-client` 4.1.0 (RabbitMQ AMQP 1.0 client) — wired by hand, no auto-config |
 | Send / receive API    | `RabbitTemplate`, `@RabbitListener` (channels)                         | `RabbitAmqpTemplate`, `@RabbitListener` via `RabbitAmqpListenerContainerFactory` (links) |
-| Addressing            | exchange + routing key on a channel                                    | v2 target/source addresses (`/exchanges/jobs/job.*`, `/queues/jobs.in`) — Spring builds them |
+| Addressing            | exchange + routing key on a channel                                    | v2 target/source addresses (`/exchanges/jobs/job.submitted`, `/queues/jobs.in`) — Spring builds them |
 | Token acquisition     | Spring Security `OAuth2AuthorizedClientManager` + `CredentialsProvider` | the AMQP client's own `oauth2()` settings (no Spring Security in the broker path)     |
 | Token refresh         | `CredentialsRefreshService` → `update-secret` at 80%                   | built into the client → `PUT /auth/tokens` at ~80% (automatic)                       |
 | Behavior on expiry    | broker refuses operations, connection stays open                       | broker **disconnects** the connection                                                |
 | Authorization failure | channel `403 ACCESS_REFUSED`                                           | session/connection `amqp:unauthorized-access`                                        |
-| HTTP token client     | needed Apache HttpClient 5 (JDK HttpClient deadlocked on h2c)          | client's token requester is pinned to HTTP/1.1 — no workaround needed                |
+| HTTP token client     | needed Apache HttpClient 5 (JDK HttpClient deadlocked on h2c)          | client's token requester uses `HttpURLConnection` (HTTP/1.1 only) — no workaround needed |
 | Integration tests     | `amqplib`                                                              | `rhea`                                                                               |
-| Broker / realm / topology | —                                                                  | **unchanged** (`rabbitmq.conf`, `definitions.json`, Keycloak all identical; RabbitMQ 4.1 → 4.2 for live-connection refresh) |
+| Broker / realm / topology | —                                                                  | **unchanged** (`rabbitmq.conf`, `definitions.json`, Keycloak all identical; RabbitMQ 4.1 → 4.2; live-connection refresh needs 4.1+) |
 
 ## Tech stack
 
