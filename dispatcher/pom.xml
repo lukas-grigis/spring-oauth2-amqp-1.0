@@ -26,12 +26,9 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- Spring AMQP's RabbitMQ AMQP 1.0 client support: AmqpEnvironmentBuilder, SingleAmqpConnectionFactory,
-         RabbitAmqpTemplate, RabbitAmqpListenerContainerFactory. Replaces spring-boot-starter-amqp (0.9.1).
-         There is no Spring Boot auto-configuration for AMQP 1.0, so every bean is wired by hand. -->
     <dependency>
-      <groupId>org.springframework.amqp</groupId>
-      <artifactId>spring-rabbitmq-client</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp-rabbitmq</artifactId>
     </dependency>
 
     <dependency>

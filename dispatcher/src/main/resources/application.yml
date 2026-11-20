@@ -7,10 +7,6 @@ spring:
 
 app:
   amqp:
-    connection:
-      host: localhost
-      port: 5672
-      virtual-host: /
     oauth2:
       # Keycloak is HTTP behind Traefik at /auth. The RabbitMQ AMQP 1.0 client fetches the token itself (its
       # token requester uses the JDK's HttpURLConnection, which only speaks HTTP/1.1, so there is no

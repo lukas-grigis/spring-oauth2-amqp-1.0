@@ -26,10 +26,9 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- Spring AMQP's RabbitMQ AMQP 1.0 client support (replaces spring-boot-starter-amqp). -->
     <dependency>
-      <groupId>org.springframework.amqp</groupId>
-      <artifactId>spring-rabbitmq-client</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp-rabbitmq</artifactId>
     </dependency>
 
     <dependency>
